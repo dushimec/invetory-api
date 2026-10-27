@@ -1,0 +1,45 @@
+import { Router } from 'express';
+import authRoutes from './auth.routes.js';
+import auditRoutes from './audit.routes.js';
+import adjustmentRoutes from './adjustment.routes.js';
+import { categories, units } from './category.routes.js';
+import customerRoutes from './customer.routes.js';
+import dashboardRoutes from './dashboard.routes.js';
+import salesRoutes from './sale.routes.js';
+import inventoryRoutes from './inventory.routes.js';
+import productRoutes from './product.routes.js';
+import purchaseRoutes from './purchase.routes.js';
+import receiptRoutes from './receipt.routes.js';
+import supplierRoutes from './supplier.routes.js';
+import transferRoutes from './transfer.routes.js';
+import reportRoutes from './report.routes.js';
+import returnRoutes from './return.routes.js';
+import userRoutes from './user.routes.js';
+import warehouseRoutes from './warehouse.routes.js';
+import organizationRoutes from './organization.routes.js';
+import roleRoutes from './role.routes.js';
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/organization', organizationRoutes);
+router.use('/audit-logs', auditRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/reports', reportRoutes);
+router.use('/users', userRoutes);
+router.use('/roles', roleRoutes);
+router.use('/returns', returnRoutes);
+router.use('/products', productRoutes);
+router.use('/categories', categories);
+router.use('/units', units);
+router.use('/warehouses', warehouseRoutes);
+router.use('/inventory/adjustment-requests', adjustmentRoutes);
+router.use('/inventory/transfers', transferRoutes);
+router.use('/inventory', inventoryRoutes);
+router.use('/purchase-orders', purchaseRoutes);
+router.use('/goods-receipts', receiptRoutes);
+router.use('/suppliers', supplierRoutes);
+router.use('/customers', customerRoutes);
+router.use('/sales-orders', salesRoutes);
+
+export default router;
