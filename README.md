@@ -23,6 +23,12 @@ Requirements: Node.js 20+, npm, and Docker Compose (or a PostgreSQL 14+ server).
 
 5. Start the development server with `npm run dev`. Production builds use `npm run build` then `npm start`.
 
+### Render deployment
+
+For a Render service using a custom build command, set the build command to `npm run build:render` and the start command to `npm start`. The build script installs the locked development dependencies explicitly (including TypeScript and `@types/*`) even when Render sets `NODE_ENV=production`, then generates Prisma Client, applies migrations, and compiles the API. Set `DATABASE_URL` and the other required production environment variables in Render's environment settings; do not commit secrets.
+
+On Windows, stop any running local API process before running `npm run build:render` locally. `npm ci` replaces `node_modules`, and Prisma Client generation replaces its query-engine DLL; either can fail with `EPERM` while the API has the DLL loaded. In the API's terminal, press `Ctrl+C`, then rerun the command. Do not use the Render build command as a routine local development command.
+
 The liveness endpoint is `GET /health`; `GET /ready` also checks the database. Swagger UI is at `/api-docs` and the OpenAPI document at `/api-docs/openapi.json`.
 
 The default CORS allowlist includes `http://localhost:5173` (local frontend) and `http://localhost:8003` (API/Swagger on the configured local port). Set `CORS_ORIGINS` in `.env` to a comma-separated list of exact trusted origins when using other ports or hosts. Do not use `*` when credentials are enabled. Restart the server after changing `.env`.
