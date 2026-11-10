@@ -10,6 +10,7 @@ import { returnPaths } from './returns.docs.js';
 import { adjustmentPaths } from './adjustments.docs.js';
 import { adminPaths } from './admin.docs.js';
 import { catalogPaths } from './Category.docs.js';
+import { stockCountPaths } from './stock-counts.docs.js';
 
 export const apiPaths = {
   ...authPaths,
@@ -21,6 +22,7 @@ export const apiPaths = {
   ...salesPaths,
   ...transferPaths,
   ...adjustmentPaths,
+  ...stockCountPaths,
   ...returnPaths,
   ...reportPaths,
   ...adminPaths,

@@ -10,4 +10,5 @@ router.get('/inventory-movements', controller.movements);
 router.get('/low-stock', controller.lowStock);
 router.get('/imports', controller.imports);
 router.get('/deliveries', controller.deliveries);
+router.get('/customer-outstanding', controller.customerOutstanding);
 export default router;

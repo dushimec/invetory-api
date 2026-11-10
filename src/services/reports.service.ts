@@ -380,3 +380,77 @@ export async function deliveryTrackingReport(
     },
   };
 }
+
+export async function customerOutstandingReport(
+  organizationId: string,
+  query: Pick<ReportQuery, 'page' | 'pageSize' | 'from' | 'to'>,
+) {
+  assertDateRange(query);
+  const where: Prisma.SalesOrderWhereInput = {
+    organizationId,
+    customerId: { not: null },
+    status: { not: 'CANCELLED' },
+    paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] },
+    ...(query.from || query.to
+      ? {
+          createdAt: {
+            ...(query.from ? { gte: query.from } : {}),
+            ...(query.to ? { lte: query.to } : {}),
+          },
+        }
+      : {}),
+  };
+  const [data, totalItems, summary] = await prisma.$transaction([
+    prisma.salesOrder.findMany({
+      where,
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        currency: true,
+        subtotal: true,
+        discountAmount: true,
+        taxAmount: true,
+        total: true,
+        paidAmount: true,
+        paymentStatus: true,
+        createdAt: true,
+        customer: { select: { id: true, code: true, name: true, phone: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    }),
+    prisma.salesOrder.count({ where }),
+    prisma.$queryRaw<Array<{ orderCount: bigint; outstanding: Prisma.Decimal }>>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS "orderCount",
+        COALESCE(SUM("total" - "paidAmount"), 0) AS "outstanding"
+      FROM "SalesOrder"
+      WHERE "organizationId" = ${organizationId}::uuid
+        AND "customerId" IS NOT NULL
+        AND "status" <> 'CANCELLED'::"SalesStatus"
+        AND "paymentStatus" IN (
+          'UNPAID'::"SalesPaymentStatus",
+          'PARTIALLY_PAID'::"SalesPaymentStatus"
+        )
+        ${query.from ? Prisma.sql`AND "createdAt" >= ${query.from}` : Prisma.empty}
+        ${query.to ? Prisma.sql`AND "createdAt" <= ${query.to}` : Prisma.empty}
+    `),
+  ]);
+  return {
+    data: data.map((order) => ({
+      ...order,
+      outstanding: order.total.sub(order.paidAmount),
+    })),
+    summary: {
+      orderCount: Number(summary[0]?.orderCount ?? 0),
+      outstanding: summary[0]?.outstanding ?? new Prisma.Decimal(0),
+    },
+    meta: {
+      page: query.page,
+      pageSize: query.pageSize,
+      totalItems,
+      totalPages: Math.ceil(totalItems / query.pageSize),
+    },
+  };
+}

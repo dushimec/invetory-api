@@ -9,11 +9,14 @@ import {
   dispatchSalesOrder,
   getSalesOrder,
   listSalesOrders,
+  listSalesPayments,
+  recordSalesPayment,
   reserveSalesOrder,
   updateSalesDelivery,
 } from '../services/sales.service.js';
 import {
   salesDeliveryUpdateSchema,
+  salesPaymentCreateSchema,
   salesOrderListSchema,
 } from '../validators/purchase.validator.js';
 
@@ -32,6 +35,7 @@ export const create: RequestHandler = async (req, res) => {
     req.auth!.organizationId,
     req.auth!.userId,
     req.body,
+    req.auth!.permissions,
     req.requestId,
   );
   success(res, 'Sales order created successfully', order, 201);
@@ -119,6 +123,30 @@ export const listDeliveries: RequestHandler = async (req, res) => {
     String(req.params.id),
   );
   success(res, 'Sales order deliveries retrieved successfully', order.deliveries);
+};
+
+export const listPayments: RequestHandler = async (req, res) => {
+  success(
+    res,
+    'Sales payment history retrieved successfully',
+    await listSalesPayments(
+      req.auth!.organizationId,
+      String(req.params.id),
+    ),
+  );
+};
+
+export const recordPayment: RequestHandler = async (req, res) => {
+  const input = salesPaymentCreateSchema.parse(req.body);
+  const payment = await recordSalesPayment(
+    req.auth!.organizationId,
+    req.auth!.userId,
+    String(req.params.id),
+    idempotencyKey(req),
+    input,
+    req.requestId,
+  );
+  success(res, 'Customer payment recorded successfully', payment, 201);
 };
 
 export const cancel: RequestHandler = async (req, res) => {

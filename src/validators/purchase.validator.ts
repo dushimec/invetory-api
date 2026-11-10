@@ -103,13 +103,30 @@ export const salesOrderCreateSchema = z
   .object({
     customerId: uuid.optional(),
     warehouseId: uuid,
+    discountPercent: z
+      .string()
+      .regex(/^\d{1,3}(?:\.\d{1,4})?$/)
+      .refine((value) => Number(value) <= 100, 'Discount cannot exceed 100%')
+      .optional(),
     deliveryAddress: z.string().trim().max(500).optional(),
     estimatedDeliveryAt: z.string().datetime().optional(),
     notes: z.string().max(2000).optional(),
     items: z
-      .array(z.object({ productId: uuid, quantity }).strict())
+      .array(
+        z
+          .object({ productId: uuid, quantity, unitPrice: decimal.optional() })
+          .strict(),
+      )
       .min(1)
       .max(500),
+  })
+  .strict();
+
+export const salesPaymentCreateSchema = z
+  .object({
+    amount: z.string().regex(/^\d{1,16}(?:\.\d{1,4})?$/),
+    method: z.enum(['CASH', 'MOBILE_MONEY', 'BANK_TRANSFER', 'CARD', 'OTHER']),
+    reference: z.string().trim().max(120).optional(),
   })
   .strict();
 

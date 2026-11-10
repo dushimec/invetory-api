@@ -22,7 +22,6 @@ export const loginSchema = z
   .object({
     email,
     password: z.string().min(1).max(128),
-    organizationSlug: z.string().trim().toLowerCase().min(2).max(60),
   })
   .strict();
 

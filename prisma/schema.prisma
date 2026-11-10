@@ -62,6 +62,14 @@ enum DocumentStatus {
   REVERSED
 }
 
+enum StockCountStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  POSTED
+}
+
 enum SalesStatus {
   DRAFT
   CONFIRMED
@@ -70,6 +78,12 @@ enum SalesStatus {
   FULFILLED
   COMPLETED
   CANCELLED
+}
+
+enum SalesPaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
 }
 
 enum DeliveryStatus {
@@ -139,6 +153,7 @@ model Organization {
   reservations    InventoryReservation[]
   transfers       StockTransfer[]
   adjustments     StockAdjustment[]
+  stockCounts     StockCount[]
   returns         InventoryReturn[]
   idempotency     IdempotencyRecord[]
   auditLogs       AuditLog[]
@@ -146,6 +161,7 @@ model Organization {
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
   salesDeliveries SalesDelivery[]
+  salesPayments   SalesPayment[]
 }
 
 model OrganizationSettings {
@@ -155,6 +171,8 @@ model OrganizationSettings {
   address                   String?
   logoUrl                   String?
   taxSettings               Json         @default("{}")
+  salesTaxRate              Decimal      @default(0) @db.Decimal(7, 4)
+  maxSalesDiscountPercent   Decimal      @default(0) @db.Decimal(7, 4)
   baseCurrency              String       @default("RWF") @db.Char(3)
   timezone                  String       @default("Africa/Kigali")
   allowNegativeStock        Boolean      @default(false)
@@ -176,6 +194,7 @@ model User {
   memberships        OrganizationMembership[]
   sessions           UserSession[]
   resetTokens        PasswordResetToken[]
+  salesPaymentsReceived SalesPayment[]
   auditLogs          AuditLog[]
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
@@ -275,6 +294,7 @@ model Warehouse {
   transfersFrom  StockTransfer[]     @relation("TransferSource")
   transfersTo    StockTransfer[]     @relation("TransferDestination")
   adjustments    StockAdjustment[]
+  stockCounts    StockCount[]
   returns        InventoryReturn[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
@@ -295,6 +315,7 @@ model WarehouseLocation {
   reservations  InventoryReservation[]
   serialNumbers StockSerial[]
   returnItems   InventoryReturnItem[]
+  stockCountItems StockCountItem[]
   createdAt     DateTime               @default(now())
 
   @@unique([warehouseId, code])
@@ -360,6 +381,7 @@ model Product {
   transferItems   StockTransferItem[]
   adjustmentItems StockAdjustmentItem[]
   returnItems     InventoryReturnItem[]
+  stockCountItems StockCountItem[]
   serialNumbers   StockSerial[]
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
@@ -624,6 +646,13 @@ model SalesOrder {
   reservations        InventoryReservation[]
   deliveries          SalesDelivery[]
   returns             InventoryReturn[]      @relation("SalesReturns")
+  payments            SalesPayment[]
+  paymentStatus       SalesPaymentStatus     @default(UNPAID)
+  discountPercent     Decimal                @default(0) @db.Decimal(7, 4)
+  discountAmount      Decimal                @default(0) @db.Decimal(20, 4)
+  taxRate             Decimal                @default(0) @db.Decimal(7, 4)
+  taxAmount           Decimal                @default(0) @db.Decimal(20, 4)
+  paidAmount          Decimal                @default(0) @db.Decimal(20, 4)
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
@@ -646,6 +675,25 @@ model SalesOrderItem {
   deliveryItems  SalesDeliveryItem[]
 
   @@index([salesOrderId])
+}
+
+model SalesPayment {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  salesOrderId    String       @db.Uuid
+  amount          Decimal      @db.Decimal(20, 4)
+  method          String
+  reference       String?
+  idempotencyKey  String
+  requestHash     String
+  receivedById    String       @db.Uuid
+  receivedAt      DateTime     @default(now())
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  salesOrder      SalesOrder   @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  receivedBy      User         @relation(fields: [receivedById], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, salesOrderId, receivedAt])
 }
 
 model SalesDelivery {
@@ -775,6 +823,48 @@ model StockAdjustmentItem {
   product       Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@index([adjustmentId])
+}
+
+model StockCount {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  warehouseId    String           @db.Uuid
+  number         String
+  status         StockCountStatus @default(DRAFT)
+  reason         String?
+  reviewReason   String?
+  createdById    String           @db.Uuid
+  submittedAt    DateTime?
+  reviewedAt     DateTime?
+  reviewedById   String?          @db.Uuid
+  postedAt       DateTime?
+  postedById     String?          @db.Uuid
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  warehouse      Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  items          StockCountItem[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, warehouseId, status])
+}
+
+model StockCountItem {
+  id               String            @id @default(uuid()) @db.Uuid
+  stockCountId     String            @db.Uuid
+  productId        String            @db.Uuid
+  locationId       String            @db.Uuid
+  systemQuantity   Decimal           @db.Decimal(20, 3)
+  countedQuantity  Decimal?          @db.Decimal(20, 3)
+  stockCount       StockCount        @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+  product          Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location         WarehouseLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([stockCountId, productId, locationId])
+  @@index([productId, locationId])
 }
 
 model InventoryReturn {

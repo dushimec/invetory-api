@@ -62,6 +62,22 @@ describe('request validation', () => {
     ).toBe(false);
   });
 
+  it('accepts email and password alone for login', () => {
+    expect(
+      loginSchema.safeParse({
+        email: 'owner@example.rw',
+        password: 'valid-password',
+      }).success,
+    ).toBe(true);
+    expect(
+      loginSchema.safeParse({
+        email: 'owner@example.rw',
+        password: 'valid-password',
+        organizationSlug: 'kigali-shop',
+      }).success,
+    ).toBe(false);
+  });
+
   it('accepts monetary values as decimal strings and rejects client-supplied fields', () => {
     const valid = createProductSchema.safeParse({
       sku: 'RW-001',

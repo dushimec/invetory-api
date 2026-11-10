@@ -29,6 +29,23 @@ function quantity(value: string) {
   return result;
 }
 
+function decimalAmount(value: string, field: string) {
+  let result: Prisma.Decimal;
+  try {
+    result = new Prisma.Decimal(value);
+  } catch {
+    throw new AppError(
+      `${field} must be a decimal string`,
+      400,
+      'VALIDATION_ERROR',
+    );
+  }
+  if (!result.isFinite()) {
+    throw new AppError(`${field} must be finite`, 400, 'VALIDATION_ERROR');
+  }
+  return result;
+}
+
 function hash(input: unknown) {
   return createHash('sha256').update(JSON.stringify(input)).digest('hex');
 }
@@ -133,11 +150,13 @@ export async function createSalesOrder(
   input: {
     customerId?: string;
     warehouseId: string;
+    discountPercent?: string;
     deliveryAddress?: string;
     estimatedDeliveryAt?: string;
     notes?: string;
-    items: Array<{ productId: string; quantity: string }>;
+    items: Array<{ productId: string; quantity: string; unitPrice?: string }>;
   },
+  permissions: string[],
   requestId?: string,
 ) {
   if (!input.items.length)
@@ -178,7 +197,11 @@ export async function createSalesOrder(
       }),
       tx.organizationSettings.findUnique({
         where: { organizationId },
-        select: { baseCurrency: true },
+        select: {
+          baseCurrency: true,
+          salesTaxRate: true,
+          maxSalesDiscountPercent: true,
+        },
       }),
     ]);
     if (!warehouse || !settings || (input.customerId && !customer))
@@ -196,20 +219,71 @@ export async function createSalesOrder(
     const productMap = new Map(
       products.map((product) => [product.id, product]),
     );
+    const discountPercent = decimalAmount(
+      input.discountPercent ?? '0',
+      'Discount percentage',
+    );
+    if (discountPercent.gt(0)) {
+      if (!permissions.includes('sales.discount.apply')) {
+        throw new AppError(
+          'You do not have permission to apply sales discounts',
+          403,
+          'FORBIDDEN',
+        );
+      }
+      if (discountPercent.gt(settings.maxSalesDiscountPercent)) {
+        throw new AppError(
+          'Requested discount exceeds the organization limit',
+          400,
+          'DISCOUNT_LIMIT_EXCEEDED',
+        );
+      }
+    }
+    if (
+      input.items.some((item) => item.unitPrice !== undefined) &&
+      !permissions.includes('sales.price.override')
+    ) {
+      throw new AppError(
+        'You do not have permission to override selling prices',
+        403,
+        'FORBIDDEN',
+      );
+    }
     const lines = input.items.map((item) => {
       const product = productMap.get(item.productId)!;
       const qty = quantity(item.quantity);
+      const unitPrice =
+        item.unitPrice === undefined
+          ? product.sellingPrice
+          : decimalAmount(item.unitPrice, 'Selling price');
+      if (!unitPrice.isFinite() || unitPrice.lt(0)) {
+        throw new AppError(
+          'Selling price must be a non-negative decimal amount',
+          400,
+          'INVALID_PRICE',
+        );
+      }
       return {
         productId: item.productId,
         quantity: qty,
-        unitPrice: product.sellingPrice,
-        lineTotal: qty.mul(product.sellingPrice),
+        unitPrice,
+        lineTotal: qty.mul(unitPrice).toDecimalPlaces(4),
       };
     });
     const total = lines.reduce(
       (sum, item) => sum.add(item.lineTotal),
       new Prisma.Decimal(0),
-    );
+    ).toDecimalPlaces(4);
+    const discountAmount = total
+      .mul(discountPercent)
+      .div(100)
+      .toDecimalPlaces(4);
+    const taxAmount = total
+      .sub(discountAmount)
+      .mul(settings.salesTaxRate)
+      .div(100)
+      .toDecimalPlaces(4);
+    const grandTotal = total.sub(discountAmount).add(taxAmount).toDecimalPlaces(4);
     const order = await tx.salesOrder.create({
       data: {
         organizationId,
@@ -218,7 +292,12 @@ export async function createSalesOrder(
         number: number(),
         currency: settings.baseCurrency,
         subtotal: total,
-        total,
+        total: grandTotal,
+        discountPercent,
+        discountAmount,
+        taxRate: settings.salesTaxRate,
+        taxAmount,
+        paymentStatus: grandTotal.isZero() ? 'PAID' : 'UNPAID',
         deliveryAddress: input.deliveryAddress,
         estimatedDeliveryAt: input.estimatedDeliveryAt
           ? new Date(input.estimatedDeliveryAt)
@@ -241,7 +320,19 @@ export async function createSalesOrder(
         entityType: 'sales_order',
         entityId: order.id,
         requestId,
-        changes: { number: order.number, total: total.toString() },
+        changes: {
+          number: order.number,
+          subtotal: total.toString(),
+          discountAmount: discountAmount.toString(),
+          taxAmount: taxAmount.toString(),
+          total: grandTotal.toString(),
+          items: lines.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity.toString(),
+            unitPrice: item.unitPrice.toString(),
+            lineTotal: item.lineTotal.toString(),
+          })),
+        },
       },
     });
     return order;
@@ -313,6 +404,121 @@ export async function getSalesOrder(organizationId: string, id: string) {
   });
   if (!order) throw new AppError('Sales order not found', 404, 'NOT_FOUND');
   return order;
+}
+
+export async function listSalesPayments(organizationId: string, salesOrderId: string) {
+  const order = await prisma.salesOrder.findFirst({
+    where: { id: salesOrderId, organizationId },
+    select: { id: true },
+  });
+  if (!order) throw new AppError('Sales order not found', 404, 'NOT_FOUND');
+  return prisma.salesPayment.findMany({
+    where: { organizationId, salesOrderId },
+    include: {
+      receivedBy: { select: { id: true, fullName: true, email: true } },
+    },
+    orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+  });
+}
+
+export async function recordSalesPayment(
+  organizationId: string,
+  actorId: string,
+  salesOrderId: string,
+  idempotencyKey: string,
+  input: { amount: string; method: string; reference?: string },
+  requestId?: string,
+) {
+  if (!idempotencyKey || idempotencyKey.length > 120) {
+    throw new AppError(
+      'A valid Idempotency-Key header is required',
+      400,
+      'IDEMPOTENCY_KEY_REQUIRED',
+    );
+  }
+  const amount = decimalAmount(input.amount, 'Payment amount');
+  if (!amount.isFinite() || amount.lte(0)) {
+    throw new AppError('Payment amount must be greater than zero', 400, 'INVALID_PAYMENT');
+  }
+  const operationHash = hash({
+    salesOrderId,
+    amount: amount.toString(),
+    method: input.method,
+    reference: input.reference ?? null,
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const order = await lockSalesOrder(tx, organizationId, salesOrderId);
+    const existing = await tx.salesPayment.findUnique({
+      where: { organizationId_idempotencyKey: { organizationId, idempotencyKey } },
+      include: {
+        receivedBy: { select: { id: true, fullName: true, email: true } },
+      },
+    });
+    if (existing) {
+      if (existing.salesOrderId !== salesOrderId || existing.requestHash !== operationHash) {
+        throw new AppError(
+          'Idempotency key was already used with a different payment request',
+          409,
+          'IDEMPOTENCY_CONFLICT',
+        );
+      }
+      return existing;
+    }
+    if (order.status === 'CANCELLED') {
+      throw new AppError('Payments cannot be recorded on a cancelled order', 409, 'INVALID_STATE');
+    }
+    const outstanding = order.total.sub(order.paidAmount);
+    if (amount.gt(outstanding)) {
+      throw new AppError(
+        'Payment cannot exceed the outstanding sales-order balance',
+        409,
+        'OVERPAYMENT',
+      );
+    }
+    const payment = await tx.salesPayment.create({
+      data: {
+        organizationId,
+        salesOrderId,
+        amount,
+        method: input.method,
+        reference: input.reference,
+        idempotencyKey,
+        requestHash: operationHash,
+        receivedById: actorId,
+      },
+      include: {
+        receivedBy: { select: { id: true, fullName: true, email: true } },
+      },
+    });
+    const paidAmount = order.paidAmount.add(amount).toDecimalPlaces(4);
+    await tx.salesOrder.update({
+      where: { id: salesOrderId },
+      data: {
+        paidAmount,
+        paymentStatus: paidAmount.gte(order.total)
+          ? 'PAID'
+          : 'PARTIALLY_PAID',
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        organizationId,
+        actorId,
+        action: 'sales_payment.recorded',
+        entityType: 'sales_payment',
+        entityId: payment.id,
+        requestId,
+        changes: {
+          salesOrderId,
+          amount: amount.toString(),
+          method: input.method,
+          reference: input.reference ?? null,
+        },
+      },
+    });
+    return payment;
+  });
 }
 
 export async function confirmSalesOrder(

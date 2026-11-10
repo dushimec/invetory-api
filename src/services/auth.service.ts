@@ -31,6 +31,9 @@ const permissionKeys = [
   'sales.create',
   'sales.read',
   'sales.approve',
+  'sales.price.override',
+  'sales.discount.apply',
+  'sales.payments.record',
   'returns.process',
   'suppliers.manage',
   'suppliers.read',
@@ -114,6 +117,7 @@ export const defaultRolePermissions: Record<string, string[]> = {
     'sales.read',
     'customers.manage',
     'customers.read',
+    'sales.payments.record',
     'reports.view',
   ],
   'Sales Manager': [
@@ -122,6 +126,9 @@ export const defaultRolePermissions: Record<string, string[]> = {
     'sales.create',
     'sales.read',
     'sales.approve',
+    'sales.price.override',
+    'sales.discount.apply',
+    'sales.payments.record',
     'customers.manage',
     'customers.read',
     'reports.view',
@@ -393,16 +400,13 @@ export async function register(input: {
 export async function login(
   email: string,
   password: string,
-  organizationSlug: string,
 ) {
-  const organization = await prisma.organization.findUnique({
-    where: { slug: organizationSlug.toLowerCase() },
-  });
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
     include: {
       memberships: {
-        where: { organizationId: organization?.id, status: 'ACTIVE' },
+        where: { status: 'ACTIVE' },
+        include: { organization: true },
       },
     },
   });
@@ -411,10 +415,8 @@ export async function login(
     ? await argon2.verify(user.passwordHash, password)
     : await argon2.hash(password, { type: argon2.argon2id }).then(() => false);
   if (
-    !organization ||
     !user ||
     !user.isActive ||
-    (user.lockedUntil && user.lockedUntil > now) ||
     user.memberships.length === 0 ||
     !passwordMatches
   ) {
@@ -429,15 +431,30 @@ export async function login(
       });
     }
     throw new AppError(
-      'Invalid email, password, or organization',
+      'Invalid email or password',
       401,
       'INVALID_CREDENTIALS',
+    );
+  }
+  if (user.lockedUntil && user.lockedUntil > now) {
+    throw new AppError(
+      'Your account is temporarily locked after several unsuccessful sign-in attempts. Please wait a little while, then try again.',
+      423,
+      'ACCOUNT_LOCKED',
     );
   }
   await prisma.user.update({
     where: { id: user.id },
     data: { failedLoginCount: 0, lockedUntil: null },
   });
+  if (user.memberships.length > 1) {
+    throw new AppError(
+      'This account belongs to more than one organization. Please contact your administrator for help signing in.',
+      409,
+      'MULTIPLE_ORGANIZATIONS',
+    );
+  }
+  const organization = user.memberships[0].organization;
   const sessionId = randomUUID();
   const tokens = issueTokens(user.id, organization.id, sessionId);
   await prisma.userSession.create({

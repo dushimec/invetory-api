@@ -61,6 +61,9 @@ describe('HTTP application', () => {
   it('publishes the versioned OpenAPI description', async () => {
     const response = await request(app).get('/api-docs/openapi.json');
     expect(response.status).toBe(200);
+    expect(response.headers['content-disposition']).toBe(
+      'attachment; filename="api-docs.json"',
+    );
     expect(response.body.openapi).toBe('3.0.3');
     expect(response.body.paths['/inventory/receive']).toBeDefined();
     expect(response.body.paths['/purchase-orders']).toBeDefined();
@@ -83,6 +86,16 @@ describe('HTTP application', () => {
     expect(response.body.paths['/reports/low-stock']).toBeDefined();
     expect(response.body.paths['/returns/{id}/post']).toBeDefined();
     expect(response.body.paths['/audit-logs']).toBeDefined();
+  });
+
+  it('downloads the OpenAPI description from the short JSON URL', async () => {
+    const response = await request(app).get('/api-docs.json');
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toMatch(/application\/json/);
+    expect(response.headers['content-disposition']).toBe(
+      'attachment; filename="api-docs.json"',
+    );
+    expect(response.body.openapi).toBe('3.0.3');
   });
 
   it('rejects access to tenant APIs without authentication', async () => {

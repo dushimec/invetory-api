@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import {
+  customerOutstandingReport,
   deliveryTrackingReport,
   importProcurementReport,
   inventoryValuation,
@@ -94,6 +95,19 @@ export const deliveries: RequestHandler = async (req, res) => {
     await deliveryTrackingReport(
       req.auth!.organizationId,
       deliveryReportQuerySchema.parse(req.query),
+    ),
+  );
+};
+
+export const customerOutstanding: RequestHandler = async (req, res) => {
+  success(
+    res,
+    'Customer outstanding balances report retrieved',
+    await customerOutstandingReport(
+      req.auth!.organizationId,
+      reportQuerySchema
+        .omit({ warehouseId: true, productId: true })
+        .parse(req.query),
     ),
   );
 };

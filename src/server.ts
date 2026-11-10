@@ -59,7 +59,11 @@ app.get('/ready', async (_req, res) => {
     meta: null,
   });
 });
-app.get('/api-docs/openapi.json', (_req, res) => res.json(openApiSpec));
+const downloadOpenApiSpec = (_req: express.Request, res: express.Response) =>
+  res.attachment('api-docs.json').json(openApiSpec);
+
+app.get('/api-docs.json', downloadOpenApiSpec);
+app.get('/api-docs/openapi.json', downloadOpenApiSpec);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
 app.use('/api/v1', routes);
 app.use(notFound);

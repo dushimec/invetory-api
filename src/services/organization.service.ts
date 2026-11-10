@@ -1,4 +1,5 @@
 import { prisma } from '../config/db.js';
+import { Prisma } from '@prisma/client';
 import { AppError } from '../utils/app-error.js';
 import type { z } from 'zod';
 import { organizationSettingsUpdateSchema } from '../validators/organization.validator.js';
@@ -44,7 +45,19 @@ export async function updateOrganizationSettings(
     }
     const updated = await tx.organizationSettings.update({
       where: { organizationId },
-      data: input,
+      data: {
+        ...input,
+        ...(input.salesTaxRate !== undefined
+          ? { salesTaxRate: new Prisma.Decimal(input.salesTaxRate) }
+          : {}),
+        ...(input.maxSalesDiscountPercent !== undefined
+          ? {
+              maxSalesDiscountPercent: new Prisma.Decimal(
+                input.maxSalesDiscountPercent,
+              ),
+            }
+          : {}),
+      },
       include: {
         organization: { select: { id: true, name: true, slug: true } },
       },

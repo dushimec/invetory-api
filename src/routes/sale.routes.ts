@@ -9,6 +9,7 @@ import {
   salesOrderCreateSchema,
   salesDeliveryParamsSchema,
   salesDeliveryUpdateSchema,
+  salesPaymentCreateSchema,
   salesOrderListSchema,
 } from '../validators/purchase.validator.js';
 
@@ -50,6 +51,19 @@ router.get(
   requirePermission('sales.read'),
   validate(purchaseOrderParamsSchema, 'params'),
   controller.listDeliveries,
+);
+router.get(
+  '/:id/payments',
+  requirePermission('sales.read'),
+  validate(purchaseOrderParamsSchema, 'params'),
+  controller.listPayments,
+);
+router.post(
+  '/:id/payments',
+  requirePermission('sales.payments.record'),
+  validate(purchaseOrderParamsSchema, 'params'),
+  validate(salesPaymentCreateSchema),
+  controller.recordPayment,
 );
 router.patch(
   '/:id/deliveries/:deliveryId',

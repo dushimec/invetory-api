@@ -9,6 +9,16 @@ export const organizationSettingsUpdateSchema = z
     allowNegativeStock: z.boolean().optional(),
     requirePurchaseApproval: z.boolean().optional(),
     requireSeparationOfDuties: z.boolean().optional(),
+    salesTaxRate: z
+      .string()
+      .regex(/^\d{1,3}(?:\.\d{1,4})?$/)
+      .refine((value) => Number(value) <= 100, 'Sales tax rate cannot exceed 100%')
+      .optional(),
+    maxSalesDiscountPercent: z
+      .string()
+      .regex(/^\d{1,3}(?:\.\d{1,4})?$/)
+      .refine((value) => Number(value) <= 100, 'Maximum discount cannot exceed 100%')
+      .optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {

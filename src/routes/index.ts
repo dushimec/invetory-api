@@ -18,6 +18,7 @@ import userRoutes from './user.routes.js';
 import warehouseRoutes from './warehouse.routes.js';
 import organizationRoutes from './organization.routes.js';
 import roleRoutes from './role.routes.js';
+import stockCountRoutes from './stock-count.routes.js';
 
 const router = Router();
 
@@ -34,6 +35,7 @@ router.use('/categories', categories);
 router.use('/units', units);
 router.use('/warehouses', warehouseRoutes);
 router.use('/inventory/adjustment-requests', adjustmentRoutes);
+router.use('/inventory/stock-counts', stockCountRoutes);
 router.use('/inventory/transfers', transferRoutes);
 router.use('/inventory', inventoryRoutes);
 router.use('/purchase-orders', purchaseRoutes);

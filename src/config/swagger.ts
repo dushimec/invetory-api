@@ -26,6 +26,7 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Transfers' },
       { name: 'Returns' },
       { name: 'Adjustments' },
+      { name: 'Stock Counts' },
       { name: 'Reports' },
       { name: 'Users' },
       { name: 'Audit' },
@@ -118,6 +119,16 @@ export const openApiSpec = swaggerJsdoc({
             allowNegativeStock: { type: 'boolean' },
             requirePurchaseApproval: { type: 'boolean' },
             requireSeparationOfDuties: { type: 'boolean' },
+            salesTaxRate: {
+              type: 'string',
+              pattern: '^\\d{1,3}(\\.\\d{1,4})?$',
+              description: 'Tax percentage applied to sales after discounts.',
+            },
+            maxSalesDiscountPercent: {
+              type: 'string',
+              pattern: '^\\d{1,3}(\\.\\d{1,4})?$',
+              description: 'Maximum order discount percentage permitted by organization policy.',
+            },
           },
         },
         ProductInput: {
@@ -247,6 +258,11 @@ export const openApiSpec = swaggerJsdoc({
           properties: {
             customerId: { type: 'string', format: 'uuid' },
             warehouseId: { type: 'string', format: 'uuid' },
+            discountPercent: {
+              type: 'string',
+              pattern: '^\\d{1,3}(\\.\\d{1,4})?$',
+              description: 'Optional authorized order-level percentage discount.',
+            },
             deliveryAddress: { type: 'string', maxLength: 500 },
             estimatedDeliveryAt: { type: 'string', format: 'date-time' },
             notes: { type: 'string', maxLength: 2000 },
@@ -261,9 +277,26 @@ export const openApiSpec = swaggerJsdoc({
                 properties: {
                   productId: { type: 'string', format: 'uuid' },
                   quantity: { $ref: '#/components/schemas/DecimalQuantity' },
+                  unitPrice: {
+                    $ref: '#/components/schemas/DecimalMoney',
+                    description: 'Optional; requires sales.price.override.',
+                  },
                 },
               },
             },
+          },
+        },
+        SalesPaymentInput: {
+          type: 'object',
+          required: ['amount', 'method'],
+          additionalProperties: false,
+          properties: {
+            amount: { $ref: '#/components/schemas/DecimalMoney' },
+            method: {
+              type: 'string',
+              enum: ['CASH', 'MOBILE_MONEY', 'BANK_TRANSFER', 'CARD', 'OTHER'],
+            },
+            reference: { type: 'string', maxLength: 120 },
           },
         },
         SalesDeliveryUpdate: {

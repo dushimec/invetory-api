@@ -54,9 +54,9 @@ export const salesPaths = {
       tags: ['Sales'],
       security: auth,
       summary:
-        'Create a draft sales order using server-side current selling prices',
+        'Create a draft order using configured tax and authorized prices/discounts',
       description:
-        'The order currency is the organization base currency. Optional delivery address and ETA are retained for fulfilment tracking.',
+        'The order currency is the organization base currency. Tax and discount calculations are snapshotted. Price overrides and discounts require dedicated permissions.',
       requestBody: {
         required: true,
         content: {
@@ -158,6 +158,37 @@ export const salesPaths = {
       responses: {
         '200': { description: 'Chronological shipment history' },
         '404': { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+  '/sales-orders/{id}/payments': {
+    get: {
+      tags: ['Sales'],
+      security: auth,
+      summary: 'List payment history for a customer sales order',
+      parameters: id,
+      responses: {
+        '200': { description: 'Chronological customer payment history' },
+      },
+    },
+    post: {
+      tags: ['Sales'],
+      security: auth,
+      summary: 'Record a full or partial customer payment',
+      description:
+        'Payments are stored separately from inventory movements. The required idempotency key prevents duplicate receipt records, and overpayments are rejected.',
+      parameters: [...id, ...key],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/SalesPaymentInput' },
+          },
+        },
+      },
+      responses: {
+        '201': { description: 'Payment recorded' },
+        '409': { $ref: '#/components/responses/Conflict' },
       },
     },
   },

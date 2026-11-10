@@ -10,11 +10,7 @@ export const register: RequestHandler = async (req, res) => {
 };
 
 export const login: RequestHandler = async (req, res) => {
-  const result = await authService.login(
-    req.body.email,
-    req.body.password,
-    req.body.organizationSlug,
-  );
+  const result = await authService.login(req.body.email, req.body.password);
   success(res, 'Signed in successfully', result);
 };
 

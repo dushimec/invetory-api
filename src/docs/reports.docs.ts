@@ -158,4 +158,22 @@ export const reportPaths = {
       },
     },
   },
+  '/reports/customer-outstanding': {
+    get: {
+      tags: ['Reports', 'Sales'],
+      security: auth,
+      summary: 'List customer sales orders with outstanding balances',
+      description:
+        'Outstanding is calculated as the order total minus recorded payments. Cancelled orders are excluded.',
+      parameters: reportFilters.filter(
+        (item) => !['warehouseId', 'productId'].includes(item.name),
+      ),
+      responses: {
+        '200': {
+          description:
+            'Paginated customer balances with a total outstanding amount and order count',
+        },
+      },
+    },
+  },
 };
